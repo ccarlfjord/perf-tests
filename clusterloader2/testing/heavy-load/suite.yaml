@@ -1,0 +1,4 @@
+- identifier: heavy-load
+  configPath: testing/heavy-load/test.yaml
+  overridePaths:
+    - testing/heavy-load/config.yaml

@@ -1,0 +1,450 @@
+# ASSUMPTIONS:
+# - Underlying cluster should have 100+ nodes.
+# - Number of nodes should be divisible by NODES_PER_NAMESPACE (default 10).
+# - The number of created SVCs is half the number of created Deployments.
+# - Only half of Deployments will be assigned 1-1 to existing SVCs.
+
+### Pod / node counts
+###############################################
+{{ $SMALL_GROUP_SIZE := DefaultParam .SMALL_GROUP_SIZE 4 }}
+{{ $SMALL_GROUP_CPU := DefaultParam .SMALL_GROUP_CPU "125m"  }}
+{{ $SMALL_GROUP_MEMORY := DefaultParam .SMALL_GROUP_MEMORY "512Mi"  }}
+
+{{ $MEDIUM_GROUP_SIZE := DefaultParam .MEDIUM_GROUP_SIZE 2 }}
+{{ $MEDIUM_GROUP_CPU := DefaultParam .MEDIUM_GROUP_CPU "1000m"  }}
+{{ $MEDIUM_GROUP_MEMORY := DefaultParam .MEDIUM_GROUP_MEMORY "1Gi"  }}
+
+{{ $BIG_GROUP_CPU := DefaultParam .BIG_GROUP_CPU "2000m"  }}
+{{ $BIG_GROUP_MEMORY := DefaultParam .BIG_GROUP_MEMORY "2Gi"  }}
+{{ $BIG_GROUP_SIZE := DefaultParam .BIG_GROUP_SIZE 2 }}
+
+{{ $NODES_PER_NAMESPACE := DefaultParam .NODES_PER_NAMESPACE 2 }}
+{{ $PODS_PER_NODE := DefaultParam .PODS_PER_NODE 8 }}
+
+{{ $namespaces := DivideInt .Nodes $NODES_PER_NAMESPACE }}
+{{ $totalPods := MultiplyInt .Nodes $PODS_PER_NODE }}
+{{ $deploymentsPerNamespace := DefaultParam .DEPLOYMENTS_PER_NAMESPACE $NODES_PER_NAMESPACE }}
+
+### Configurations
+###############################################
+{{ $ENABLE_NETWORKPOLICIES := DefaultParam .ENABLE_NETWORKPOLICIES true }}
+{{ $NODE_LOCAL_DNS_LATENCY_THRESHOLD := DefaultParam .NODE_LOCAL_DNS_LATENCY_THRESHOLD "5s" }}
+{{ $PROBE_MEASUREMENTS_CHECK_PROBES_READY_TIMEOUT := DefaultParam .CL2_PROBE_MEASUREMENTS_CHECK_PROBES_READY_TIMEOUT "5m" }}
+
+{{ $ENABLE_SYSTEM_POD_METRICS:= DefaultParam .ENABLE_SYSTEM_POD_METRICS true }}
+{{ $ENABLE_CLUSTER_OOMS_TRACKER := DefaultParam .ENABLE_CLUSTER_OOMS_TRACKER true }}
+{{ $CLUSTER_OOMS_IGNORED_PROCESSES := DefaultParam .CLUSTER_OOMS_IGNORED_PROCESSES "" }}
+{{ $RESTART_COUNT_THRESHOLD_OVERRIDES:= DefaultParam .RESTART_COUNT_THRESHOLD_OVERRIDES "" }}
+{{ $ENABLE_RESTART_COUNT_CHECK := DefaultParam .ENABLE_RESTART_COUNT_CHECK true }}
+
+{{ $MIN_PODS_IN_SMALL_CLUSTERS := 100 }}
+
+{{$LOAD_TEST_THROUGHPUT := DefaultParam .CL2_LOAD_TEST_THROUGHPUT 10}}
+{{$DELETE_TEST_THROUGHPUT := DefaultParam .CL2_DELETE_TEST_THROUGHPUT $LOAD_TEST_THROUGHPUT}}
+
+{{$saturationTime := DivideInt $totalPods $LOAD_TEST_THROUGHPUT}}
+{{$deletionTime := DivideInt $totalPods $DELETE_TEST_THROUGHPUT}}
+
+# Commands to be executed
+###############################################
+{{ $EXEC_COMMAND := DefaultParam .EXEC_COMMAND nil }}
+{{ $SLEEP_AFTER_EXEC_DURATION := DefaultParam .SLEEP_AFTER_EXEC_DURATION "0s" }}
+
+{{ $EXEC_TEST := DefaultParam .EXEC_TEST nil }}
+
+
+name: heavy-load
+namespace:
+  number: {{ $namespaces }}
+
+tuningSets:
+- name: Sequence
+  parallelismLimitedLoad:
+    parallelismLimit: 1
+- name: RandomizedSaturationTimeLimited
+  RandomizedTimeLimitedLoad:
+    timeLimit: {{$saturationTime}}s
+- name: RandomizedScalingTimeLimited
+  RandomizedTimeLimitedLoad:
+    # The expected number of created/deleted pods is totalPods/4 when scaling,
+    # as each RS changes its size from X to a uniform random value in [X/2, 3X/2].
+    # To match 10 [pods/s] requirement, we need to divide saturationTime by 4.
+    timeLimit: {{DivideInt $saturationTime 4}}s
+- name: RandomizedDeletionTimeLimited
+  RandomizedTimeLimitedLoad:
+    timeLimit: {{$deletionTime}}s
+
+steps:
+
+
+- name: Starting measurements
+  measurements:
+  - Identifier: APIResponsivenessPrometheus
+    Method: APIResponsivenessPrometheus
+    Params:
+      action: start
+  - Identifier: APIResponsivenessPrometheusSimple
+    Method: APIResponsivenessPrometheus
+    Params:
+      action: start
+  - Identifier: CreatePhasePodStartupLatency
+    Method: PodStartupLatency
+    Params:
+      action: start
+      labelSelector: group = load
+      threshold: 1h # TODO(https://github.com/kubernetes/perf-tests/issues/1024): Ideally, this should be 5s
+  - Identifier: InClusterNetworkLatency
+    Method: InClusterNetworkLatency
+    Params:
+      action: start
+      checkProbesReadyTimeout: {{ $PROBE_MEASUREMENTS_CHECK_PROBES_READY_TIMEOUT }}
+      replicasPerProbe: {{ AddInt 2 (DivideInt .Nodes 100) }}
+
+  - Identifier: NodeLocalDNSLatency
+    Method: NodeLocalDNSLatencyPrometheus
+    Params:
+      action: start
+
+  - Identifier: SLOMeasurement
+    Method: SLOMeasurement
+    Params:
+      action: start
+      checkProbesReadyTimeout: {{ $PROBE_MEASUREMENTS_CHECK_PROBES_READY_TIMEOUT }}
+      replicasPerProbe: {{ AddInt 2 (DivideInt .Nodes 100) }}
+  - Identifier: NetworkProgrammingLatency
+    Method: NetworkProgrammingLatency
+    Params:
+      action: start
+
+  - Identifier: APIAvailability
+    Method: APIAvailability
+    Params:
+      action: start
+      pollFrequency: "5s"
+      hostPollTimeoutSeconds: 5
+
+  - Identifier: TestMetrics
+    Method: TestMetrics
+    Params:
+      action: start
+      systemPodMetricsEnabled: {{ $ENABLE_SYSTEM_POD_METRICS }}
+      clusterOOMsTrackerEnabled: {{ $ENABLE_CLUSTER_OOMS_TRACKER }}
+      clusterOOMsIgnoredProcesses: {{ $CLUSTER_OOMS_IGNORED_PROCESSES }}
+      restartCountThresholdOverrides: {{YamlQuote $RESTART_COUNT_THRESHOLD_OVERRIDES  4 }}
+      enableRestartCountCheck: {{ $ENABLE_RESTART_COUNT_CHECK }}
+
+- name: Creating PSP bindings
+  phases:
+  - namespaceRange:
+      min: 1
+      max: {{ $namespaces }}
+    replicasPerNamespace: 1
+    tuningSet: Sequence
+    objectBundle:
+    - basename: psp-rolebinding
+      objectTemplatePath: psp-rolebinding.yaml
+
+- name: Create services
+  phases:
+  - namespaceRange:
+      min: 1
+      max: {{ $namespaces }}
+    replicasPerNamespace: {{ DivideInt $deploymentsPerNamespace 2 }}
+    tuningSet: Sequence
+    objectBundle:
+    - basename: small-service
+      objectTemplatePath: service.yaml
+
+- name: Creating PriorityClass for DaemonSets
+  phases:
+  - replicasPerNamespace: 1
+    tuningSet: Sequence
+    objectBundle:
+      - basename: daemonset-priorityclass
+        objectTemplatePath: daemonset-priorityclass.yaml
+
+- name: Starting measurement for waiting for daemonsets
+  measurements:
+  - Method: WaitForControlledPodsRunning
+    Instances:
+    - Identifier: WaitForRunningDaemonSets
+      Params:
+        apiVersion: apps/v1
+        kind: DaemonSet
+    Params:
+      action: start
+      labelSelector: group = load
+      operationTimeout: 5m
+
+- name: Creating objects
+  phases:
+  - namespaceRange:
+      min: 1
+      max: 1
+    replicasPerNamespace: 1
+    tuningSet: Sequence
+    objectBundle:
+    - basename: daemonset
+      objectTemplatePath: daemonset.yaml
+      templateFillMap:
+        Image: k8s.gcr.io/pause:3.0
+
+- name: Waiting for daemonsets to be running
+  measurements:
+  - Method: WaitForControlledPodsRunning
+    Instances:
+    - Identifier: WaitForRunningDaemonSets
+    Params:
+      action: gather
+
+- name: Starting measurement for waiting for deployments
+  measurements:
+  - Method: WaitForControlledPodsRunning
+    Instances:
+    - Identifier: WaitForRunningDeployments
+      Params:
+        apiVersion: apps/v1
+        kind: Deployment
+    Params:
+      action: start
+      labelSelector: group = load
+      operationTimeout: 15m
+
+- module:
+    path: modules/deployments/module.yaml
+    params:
+      name: "Creating Deployments"
+      namespaces: {{ $namespaces }}
+      tuningSet: RandomizedSaturationTimeLimited
+      deploymentsPerNamespace: {{ $deploymentsPerNamespace }}
+      enableNetworkPolicies: {{ $ENABLE_NETWORKPOLICIES }}
+      small:
+        replicasMin: {{ $SMALL_GROUP_SIZE }}
+        replicasMax: {{ $SMALL_GROUP_SIZE }}
+        cpu: {{ $SMALL_GROUP_CPU }}
+        memory: {{ $SMALL_GROUP_MEMORY }}
+      medium:
+        replicasMin: {{ $MEDIUM_GROUP_SIZE }}
+        replicasMax: {{ $MEDIUM_GROUP_SIZE }}
+        cpu: {{ $MEDIUM_GROUP_CPU }}
+        memory: {{ $MEDIUM_GROUP_MEMORY }}
+      big:
+        replicasMin: {{ $BIG_GROUP_SIZE }}
+        replicasMax: {{ $BIG_GROUP_SIZE }}
+        cpu: {{ $BIG_GROUP_CPU }}
+        memory: {{ $BIG_GROUP_MEMORY }}
+
+- name: Waiting for deployments to be running
+  measurements:
+  - Method: WaitForControlledPodsRunning
+    Instances:
+     - Identifier: WaitForRunningDeployments
+    Params:
+      action: gather
+
+{{ if $EXEC_COMMAND }}
+- name: Pausing APIAvailability measurement
+  measurements:
+  - Identifier: APIAvailability
+    Method: APIAvailability
+    Params:
+      action: pause
+
+- name: Exec command
+  measurements:
+  - Identifier: ExecCommand
+    Method: Exec
+    Params:
+      command:
+      {{ range $EXEC_COMMAND }}
+      - {{ . }}
+      {{ end }}
+
+- name: Unpausing APIAvailability measurement
+  measurements:
+  - Identifier: APIAvailability
+    Method: APIAvailability
+    Params:
+      action: unpauseu
+
+- name: Sleep
+  measurements:
+  - Identifier: WaitAfterExec
+    Method: Sleep
+    Params:
+      duration: {{ $SLEEP_AFTER_EXEC_DURATION }}
+{{ end }}
+
+- module:
+    path: modules/deployments/module.yaml
+    params:
+      name: "Scaling Deployments"
+      tuningSet: RandomizedScalingTimeLimited
+      namespaces: {{ $namespaces }}
+      deploymentsPerNamespace: {{ $deploymentsPerNamespace }}
+      enableNetworkPolicies: {{ $ENABLE_NETWORKPOLICIES }}
+      small:
+        replicasMin: {{ MultiplyInt $SMALL_GROUP_SIZE 0.5 }}
+        replicasMax: {{ MultiplyInt $SMALL_GROUP_SIZE 1.5 }}
+        cpu: {{ $SMALL_GROUP_CPU }}
+        memory: {{ $SMALL_GROUP_MEMORY }}
+      medium:
+        replicasMin: {{ MultiplyInt $MEDIUM_GROUP_SIZE 0.5 }}
+        replicasMax: {{ MultiplyInt $MEDIUM_GROUP_SIZE 1.5 }}
+        cpu: {{ $MEDIUM_GROUP_CPU }}
+        memory: {{ $MEDIUM_GROUP_MEMORY }}
+      big:
+        replicasMin: {{ MultiplyInt $BIG_GROUP_SIZE 0.5 }}
+        replicasMax: {{ MultiplyInt $BIG_GROUP_SIZE 1.5 }}
+        cpu: {{ $BIG_GROUP_CPU }}
+        memory: {{ $BIG_GROUP_MEMORY }}
+
+- name: Waiting for objects to become scaled
+  measurements:
+  - Method: WaitForControlledPodsRunning
+    Instances:
+    - Identifier: WaitForRunningDeployments
+    Params:
+      action: gather
+
+- module:
+    path: modules/deployments/module.yaml
+    params:
+      name: "Scaling Deployments a lot"
+      tuningSet: RandomizedScalingTimeLimited
+      namespaces: {{ $namespaces }}
+      deploymentsPerNamespace: {{ $deploymentsPerNamespace }}
+      enableNetworkPolicies: {{ $ENABLE_NETWORKPOLICIES }}
+      small:
+        replicasMin: {{ MultiplyInt $SMALL_GROUP_SIZE 3 }}
+        replicasMax: {{ MultiplyInt $SMALL_GROUP_SIZE 5 }}
+        cpu: {{ $SMALL_GROUP_CPU }}
+        memory: {{ $SMALL_GROUP_MEMORY }}
+      medium:
+        replicasMin: {{ MultiplyInt $MEDIUM_GROUP_SIZE 3 }}
+        replicasMax: {{ MultiplyInt $MEDIUM_GROUP_SIZE 5 }}
+        cpu: {{ $MEDIUM_GROUP_CPU }}
+        memory: {{ $MEDIUM_GROUP_MEMORY }}
+      big:
+        replicasMin: {{ MultiplyInt $BIG_GROUP_SIZE 3 }}
+        replicasMax: {{ MultiplyInt $BIG_GROUP_SIZE 5 }}
+        cpu: {{ $BIG_GROUP_CPU }}
+        memory: {{ $BIG_GROUP_MEMORY }}
+
+- name: Waiting for objects to become ready after big scaling
+  measurements:
+  - Method: WaitForControlledPodsRunning
+    Instances:
+    - Identifier: WaitForRunningDeployments
+    Params:
+      action: gather
+      operationTimeout: 20m
+
+- module:
+    path: modules/deployments/module.yaml
+    params:
+      name: "Deleting Deployments"
+      namespaces: {{ $namespaces }}
+      tuningSet: RandomizedDeletionTimeLimited
+      deploymentsPerNamespace: 0
+      small: {}
+      medium: {}
+      large: {}
+
+- name: Deleting objects
+  phases:
+  - namespaceRange:
+      min: 1
+      max: 1
+    replicasPerNamespace: 0
+    tuningSet: Sequence
+    objectBundle:
+      - basename: daemonset
+        objectTemplatePath: daemonset.yaml
+
+- name: Waiting for pods to be deleted
+  measurements:
+  - Method: WaitForControlledPodsRunning
+    Instances:
+     - Identifier: WaitForRunningDeployments
+     - Identifier: WaitForRunningDaemonSets
+    Params:
+      action: gather
+
+- name: Deleting PriorityClass for DaemonSets
+  phases:
+  - replicasPerNamespace: 0
+    tuningSet: Sequence
+    objectBundle:
+      - basename: daemonset-priorityclass
+        objectTemplatePath: daemonset-priorityclass.yaml
+
+- name: Deleting Services
+  phases:
+  - namespaceRange:
+      min: 1
+      max: {{ $namespaces }}
+    replicasPerNamespace: 0
+    tuningSet: Sequence
+    objectBundle:
+    - basename: small-service
+      objectTemplatePath: service.yaml
+
+- name: Collecting measurements
+  measurements:
+  - Identifier: APIResponsivenessPrometheus
+    Method: APIResponsivenessPrometheus
+    Params:
+      action: gather
+      enableViolations: false
+      allowedSlowCalls: 0
+      customThresholds: []
+
+  - Identifier: CreatePhasePodStartupLatency
+    Method: PodStartupLatency
+    Params:
+      action: gather
+  - Identifier: InClusterNetworkLatency
+    Method: InClusterNetworkLatency
+    Params:
+      action: gather
+
+  - Identifier: NodeLocalDNSLatency
+    Method: NodeLocalDNSLatencyPrometheus
+    Params:
+      action: gather
+      enableViolations: true
+      threshold: {{ $NODE_LOCAL_DNS_LATENCY_THRESHOLD }}
+
+  - Identifier: SLOMeasurement
+    Method: SLOMeasurement
+    Params:
+      action: gather
+
+  - Identifier: APIAvailability
+    Method: APIAvailability
+    Params:
+      action: gather
+
+  - Identifier: TestMetrics
+    Method: TestMetrics
+    Params:
+      action: gather
+      systemPodMetricsEnabled: {{ $ENABLE_SYSTEM_POD_METRICS }}
+      clusterOOMsTrackerEnabled: {{ $ENABLE_CLUSTER_OOMS_TRACKER }}
+      restartCountThresholdOverrides: {{ YamlQuote $RESTART_COUNT_THRESHOLD_OVERRIDES 4 }}
+      enableRestartCountCheck: {{ $ENABLE_RESTART_COUNT_CHECK }}
+
+  - Identifier: KubeApiServerLogs
+    Method: Exec
+    Params:
+      command:
+      - sh
+      - -c
+      - |
+        kubectl --namespace kube-system \
+                logs \
+                --selector component=kube-apiserver \
+                --tail -1 \
+                --prefix |
+          grep -vE 'audit|TLS handshake error'

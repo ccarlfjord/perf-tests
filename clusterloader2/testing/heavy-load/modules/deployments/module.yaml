@@ -1,0 +1,80 @@
+## Services modules provides a module for creating / deleting services.
+
+## Input params
+{{ $name := .name }}
+{{ $namespaces := .namespaces }}
+{{ $tuningSet := .tuningSet }}
+{{ $enableNetworkPolicies := .enableNetworkPolicies }}
+{{ $deploymentsPerNamespace := .deploymentsPerNamespace }}
+
+steps:
+- name: "{{ $name }}"
+  phases:
+  - namespaceRange:
+      min: 1
+      max: {{ $namespaces }}
+    replicasPerNamespace: {{ $deploymentsPerNamespace }}
+    tuningSet: {{ $tuningSet }}
+
+    objectBundle:
+    - basename: small-deployment
+      objectTemplatePath: modules/deployments/configmap.yaml
+    - basename: small-deployment
+      objectTemplatePath: modules/deployments/secret.yaml
+
+    {{ if $enableNetworkPolicies }}
+    - basename: small-deployment
+      objectTemplatePath: modules/deployments/networkpolicy.yaml
+    {{ end }}
+
+    - basename: small-deployment
+      objectTemplatePath: modules/deployments/deployment.yaml
+      templateFillMap:
+        enableDNSTests: true # TODO ?
+        replicasMin: {{ .small.replicasMin }}
+        replicasMax: {{ .small.replicasMax }}
+        svcName: small-service
+        cpu: {{ .small.cpu }}
+        memory: {{ .small.memory }}
+
+
+    - basename: medium-deployment
+      objectTemplatePath: modules/deployments/configmap.yaml
+    - basename: medium-deployment
+      objectTemplatePath: modules/deployments/secret.yaml
+
+    {{ if $enableNetworkPolicies }}
+    - basename: medium-deployment
+      objectTemplatePath: modules/deployments/networkpolicy.yaml
+    {{ end }}
+
+    - basename: medium-deployment
+      objectTemplatePath: modules/deployments/deployment.yaml
+      templateFillMap:
+        enableDNSTests: true # TODO ?
+        replicasMin: {{ .medium.replicasMin }}
+        replicasMax: {{ .medium.replicasMax }}
+        svcName: medium-service
+        cpu: {{ .medium.cpu }}
+        memory: {{ .medium.memory }}
+
+
+    - basename: big-deployment
+      objectTemplatePath: modules/deployments/configmap.yaml
+    - basename: big-deployment
+      objectTemplatePath: modules/deployments/secret.yaml
+
+    {{ if $enableNetworkPolicies }}
+    - basename: big-deployment
+      objectTemplatePath: modules/deployments/networkpolicy.yaml
+    {{ end }}
+
+    - basename: big-deployment
+      objectTemplatePath: modules/deployments/deployment.yaml
+      templateFillMap:
+        enableDNSTests: true # TODO ?
+        replicasMin: {{ .big.replicasMin }}
+        replicasMax: {{ .big.replicasMax }}
+        svcName: big-service
+        cpu: {{ .big.cpu }}
+        memory: {{ .big.memory }}
