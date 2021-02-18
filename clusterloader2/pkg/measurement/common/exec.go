@@ -21,6 +21,7 @@ import (
 	"fmt"
 	"os"
 	"os/exec"
+	"strings"
 	"time"
 
 	"k8s.io/klog"
@@ -74,10 +75,18 @@ func (e *execMeasurement) Execute(config *measurement.Config) ([]measurement.Sum
 	cmd := exec.CommandContext(ctx, command[0], command[1:]...)
 	out, err := cmd.CombinedOutput()
 	klog.V(3).Infof("output: %v", string(out))
-	if err != nil {
-		return nil, fmt.Errorf("command %v failed: %v", command, err)
+
+	result := []measurement.Summary{
+		measurement.CreateSummary(
+			strings.Join(command, " "),
+			execName,
+			fmt.Sprintf("Output:\n%s\n##########Error:\n%v", string(out), err),
+		),
 	}
-	return nil, nil
+	if err != nil {
+		return result, fmt.Errorf("command %v failed: %v", command, err)
+	}
+	return result, nil
 }
 
 func (e *execMeasurement) Dispose() {}
