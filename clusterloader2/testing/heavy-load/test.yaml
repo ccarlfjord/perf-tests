@@ -76,7 +76,6 @@ tuningSets:
 
 steps:
 
-
 - name: Starting measurements
   measurements:
   - Identifier: APIResponsivenessPrometheus

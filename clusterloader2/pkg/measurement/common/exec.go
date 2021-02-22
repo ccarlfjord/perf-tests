@@ -18,6 +18,7 @@ package common
 
 import (
 	"context"
+	"encoding/json"
 	"fmt"
 	"os"
 	"os/exec"
@@ -76,11 +77,21 @@ func (e *execMeasurement) Execute(config *measurement.Config) ([]measurement.Sum
 	out, err := cmd.CombinedOutput()
 	klog.V(3).Infof("output: %v", string(out))
 
+	output := map[string]interface{}{
+		"output": string(out),
+		"error":  err,
+	}
+
+	jsonOutput, err := json.Marshal(output)
+	if err != nil {
+		return nil, fmt.Errorf("failed to marshal command output %v", err)
+	}
+
 	result := []measurement.Summary{
 		measurement.CreateSummary(
 			strings.Join(command, " "),
-			execName,
-			fmt.Sprintf("Output:\n%s\n##########Error:\n%v", string(out), err),
+			"json",
+			string(jsonOutput),
 		),
 	}
 	if err != nil {
