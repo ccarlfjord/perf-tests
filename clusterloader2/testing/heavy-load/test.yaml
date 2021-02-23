@@ -438,4 +438,4 @@ steps:
     Method: Exec
     Params:
       command:
-      - testing/heavy-load/get-apiserver-logs.sh
+      -  testing/heavy-load/get-apiserver-logs.sh
