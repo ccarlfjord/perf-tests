@@ -89,7 +89,7 @@ func (e *execMeasurement) Execute(config *measurement.Config) ([]measurement.Sum
 
 	result := []measurement.Summary{
 		measurement.CreateSummary(
-			strings.Join(command, " "),
+			strings.ReplaceAll(strings.Join(command, " "), "/", "_"),
 			"json",
 			string(jsonOutput),
 		),
