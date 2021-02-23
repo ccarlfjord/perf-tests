@@ -233,14 +233,6 @@ steps:
         cpu: {{ $BIG_GROUP_CPU }}
         memory: {{ $BIG_GROUP_MEMORY }}
 
-- name: Waiting for deployments to be running
-  measurements:
-  - Method: WaitForControlledPodsRunning
-    Instances:
-     - Identifier: WaitForRunningDeployments
-    Params:
-      action: gather
-
 {{ if $EXEC_COMMAND }}
 - name: Pausing APIAvailability measurement
   measurements:
@@ -298,14 +290,6 @@ steps:
         cpu: {{ $BIG_GROUP_CPU }}
         memory: {{ $BIG_GROUP_MEMORY }}
 
-- name: Waiting for objects to become scaled
-  measurements:
-  - Method: WaitForControlledPodsRunning
-    Instances:
-    - Identifier: WaitForRunningDeployments
-    Params:
-      action: gather
-
 - module:
     path: modules/deployments/module.yaml
     params:
@@ -314,30 +298,22 @@ steps:
       namespaces: {{ $namespaces }}
       deploymentsPerNamespace: {{ $deploymentsPerNamespace }}
       enableNetworkPolicies: {{ $ENABLE_NETWORKPOLICIES }}
+      repeatScalingCount: 20
       small:
-        replicasMin: {{ MultiplyInt $SMALL_GROUP_SIZE 3 }}
+        replicasMin: {{ MultiplyInt $SMALL_GROUP_SIZE 0.5 }}
         replicasMax: {{ MultiplyInt $SMALL_GROUP_SIZE 5 }}
         cpu: {{ $SMALL_GROUP_CPU }}
         memory: {{ $SMALL_GROUP_MEMORY }}
       medium:
-        replicasMin: {{ MultiplyInt $MEDIUM_GROUP_SIZE 3 }}
+        replicasMin: {{ MultiplyInt $MEDIUM_GROUP_SIZE 0.5 }}
         replicasMax: {{ MultiplyInt $MEDIUM_GROUP_SIZE 5 }}
         cpu: {{ $MEDIUM_GROUP_CPU }}
         memory: {{ $MEDIUM_GROUP_MEMORY }}
       big:
-        replicasMin: {{ MultiplyInt $BIG_GROUP_SIZE 3 }}
+        replicasMin: {{ MultiplyInt $BIG_GROUP_SIZE 0.5 }}
         replicasMax: {{ MultiplyInt $BIG_GROUP_SIZE 5 }}
         cpu: {{ $BIG_GROUP_CPU }}
         memory: {{ $BIG_GROUP_MEMORY }}
-
-- name: Waiting for objects to become ready after big scaling
-  measurements:
-  - Method: WaitForControlledPodsRunning
-    Instances:
-    - Identifier: WaitForRunningDeployments
-    Params:
-      action: gather
-      operationTimeout: 20m
 
 - module:
     path: modules/deployments/module.yaml

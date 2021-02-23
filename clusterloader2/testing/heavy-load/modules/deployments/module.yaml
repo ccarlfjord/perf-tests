@@ -6,9 +6,13 @@
 {{ $tuningSet := .tuningSet }}
 {{ $enableNetworkPolicies := .enableNetworkPolicies }}
 {{ $deploymentsPerNamespace := .deploymentsPerNamespace }}
+{{ $small := .small }}
+{{ $medium := .medium }}
+{{ $big := .big }}
 
 steps:
-- name: "{{ $name }}"
+{{ range $repeatCount := Loop (DefaultParam .repeatScalingCount 1) }}
+- name: "{{ $name }} [$repeatCount]"
   phases:
   - namespaceRange:
       min: 1
@@ -31,11 +35,11 @@ steps:
       objectTemplatePath: modules/deployments/deployment.yaml
       templateFillMap:
         enableDNSTests: true # TODO ?
-        replicasMin: {{ .small.replicasMin }}
-        replicasMax: {{ .small.replicasMax }}
+        replicasMin: {{ $small.replicasMin }}
+        replicasMax: {{ $small.replicasMax }}
         svcName: small-service
-        cpu: {{ .small.cpu }}
-        memory: {{ .small.memory }}
+        cpu: {{ $small.cpu }}
+        memory: {{ $small.memory }}
 
 
     - basename: medium-deployment
@@ -52,11 +56,11 @@ steps:
       objectTemplatePath: modules/deployments/deployment.yaml
       templateFillMap:
         enableDNSTests: true # TODO ?
-        replicasMin: {{ .medium.replicasMin }}
-        replicasMax: {{ .medium.replicasMax }}
+        replicasMin: {{ $medium.replicasMin }}
+        replicasMax: {{ $medium.replicasMax }}
         svcName: medium-service
-        cpu: {{ .medium.cpu }}
-        memory: {{ .medium.memory }}
+        cpu: {{ $medium.cpu }}
+        memory: {{ $medium.memory }}
 
 
     - basename: big-deployment
@@ -73,8 +77,18 @@ steps:
       objectTemplatePath: modules/deployments/deployment.yaml
       templateFillMap:
         enableDNSTests: true # TODO ?
-        replicasMin: {{ .big.replicasMin }}
-        replicasMax: {{ .big.replicasMax }}
+        replicasMin: {{ $big.replicasMin }}
+        replicasMax: {{ $big.replicasMax }}
         svcName: big-service
-        cpu: {{ .big.cpu }}
-        memory: {{ .big.memory }}
+        cpu: {{ $big.cpu }}
+        memory: {{ $big.memory }}
+
+- name: "{{$name }} [$repeatCount] - Waiting for objects"
+  measurements:
+    - Method: WaitForControlledPodsRunning
+      Instances:
+        - Identifier: WaitForRunningDeployments
+      Params:
+        action: gather
+        operationTimeout: 20m
+{{ end }}
