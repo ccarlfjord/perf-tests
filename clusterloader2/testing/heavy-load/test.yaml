@@ -6,20 +6,22 @@
 
 ### Pod / node counts
 ###############################################
-{{ $SMALL_GROUP_SIZE := DefaultParam .SMALL_GROUP_SIZE 4 }}
+{{ $SMALL_GROUP_SIZE := DefaultParam .SMALL_GROUP_SIZE 8 }}
 {{ $SMALL_GROUP_CPU := DefaultParam .SMALL_GROUP_CPU "125m"  }}
 {{ $SMALL_GROUP_MEMORY := DefaultParam .SMALL_GROUP_MEMORY "512Mi"  }}
 
-{{ $MEDIUM_GROUP_SIZE := DefaultParam .MEDIUM_GROUP_SIZE 2 }}
-{{ $MEDIUM_GROUP_CPU := DefaultParam .MEDIUM_GROUP_CPU "1000m"  }}
+{{ $MEDIUM_GROUP_SIZE := DefaultParam .MEDIUM_GROUP_SIZE 5 }}
+{{ $MEDIUM_GROUP_CPU := DefaultParam .MEDIUM_GROUP_CPU "500m"  }}
 {{ $MEDIUM_GROUP_MEMORY := DefaultParam .MEDIUM_GROUP_MEMORY "1Gi"  }}
 
-{{ $BIG_GROUP_CPU := DefaultParam .BIG_GROUP_CPU "2000m"  }}
+{{ $BIG_GROUP_SIZE := DefaultParam .BIG_GROUP_SIZE 3 }}
+{{ $BIG_GROUP_CPU := DefaultParam .BIG_GROUP_CPU "1000m"  }}
 {{ $BIG_GROUP_MEMORY := DefaultParam .BIG_GROUP_MEMORY "2Gi"  }}
-{{ $BIG_GROUP_SIZE := DefaultParam .BIG_GROUP_SIZE 2 }}
 
 {{ $NODES_PER_NAMESPACE := DefaultParam .NODES_PER_NAMESPACE 2 }}
-{{ $PODS_PER_NODE := DefaultParam .PODS_PER_NODE 8 }}
+{{ $PODS_PER_NODE := DefaultParam .PODS_PER_NODE (AddInt $SMALL_GROUP_SIZE $MEDIUM_GROUP_SIZE $BIG_GROUP_SIZE) }}
+
+{{ $REPEAT_SCALING_COUNT := DefaultParam .REPEAT_SCALING_COUNT 50 }}
 
 {{ $namespaces := DivideInt .Nodes $NODES_PER_NAMESPACE }}
 {{ $totalPods := MultiplyInt .Nodes $PODS_PER_NODE }}
@@ -298,7 +300,7 @@ steps:
       namespaces: {{ $namespaces }}
       deploymentsPerNamespace: {{ $deploymentsPerNamespace }}
       enableNetworkPolicies: {{ $ENABLE_NETWORKPOLICIES }}
-      repeatScalingCount: 20
+      repeatScalingCount: { {  $REPEAT_SCALING_COUNT } }
       small:
         replicasMin: {{ MultiplyInt $SMALL_GROUP_SIZE 0.5 }}
         replicasMax: {{ MultiplyInt $SMALL_GROUP_SIZE 5 }}
