@@ -16,12 +16,6 @@ data:
     google.com.cluster.local AAAA
     google.com A
     google.com AAAA
-    small-service-0 A
-    small-service-0.{{ .Namespace }} A
     small-service-0.{{ .Namespace }}.svc.cluster.local A
-    medium-service-0 A
-    medium-service-0.{{ .Namespace }} A
     medium-service-0.{{ .Namespace }}.svc.cluster.local A
-    big-service-0 A
-    big-service-0.{{ .Namespace }} A
     big-service-0.{{ .Namespace }}.svc.cluster.local A
