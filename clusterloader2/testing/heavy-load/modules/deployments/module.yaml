@@ -5,6 +5,7 @@
 {{ $namespaces := .namespaces }}
 {{ $tuningSet := .tuningSet }}
 {{ $enableNetworkPolicies := .enableNetworkPolicies }}
+{{ $sleepBetweenScalingTime := DefaultParam .sleepBetweenScalingTime "5s" }}
 {{ $deploymentsPerNamespace := .deploymentsPerNamespace }}
 {{ $small := .small }}
 {{ $medium := .medium }}
@@ -91,4 +92,12 @@ steps:
       Params:
         action: gather
         operationTimeout: 20m
+
+- name: "{{$name }} [$repeatCount] - Wait {{ $sleepBetweenScalingTime }}"
+  measurements:
+  - Identifier: Wait
+    Method: Sleep
+    Params:
+      duration: "{{ $sleepBetweenScalingTime }}"
+
 {{ end }}

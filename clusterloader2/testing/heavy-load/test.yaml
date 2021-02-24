@@ -22,6 +22,7 @@
 {{ $PODS_PER_NODE := DefaultParam .PODS_PER_NODE (AddInt $SMALL_GROUP_SIZE $MEDIUM_GROUP_SIZE $BIG_GROUP_SIZE) }}
 
 {{ $REPEAT_SCALING_COUNT := DefaultParam .REPEAT_SCALING_COUNT 50 }}
+{{ $SLEEP_BETWEEN_SCALING_DURATION := DefaultParam .SLEEP_BETWEEN_SCALING_DURATION "30s" }}
 
 {{ $namespaces := DivideInt .Nodes $NODES_PER_NAMESPACE }}
 {{ $totalPods := MultiplyInt .Nodes $PODS_PER_NODE }}
@@ -300,7 +301,8 @@ steps:
       namespaces: {{ $namespaces }}
       deploymentsPerNamespace: {{ $deploymentsPerNamespace }}
       enableNetworkPolicies: {{ $ENABLE_NETWORKPOLICIES }}
-      repeatScalingCount: { {  $REPEAT_SCALING_COUNT } }
+      repeatScalingCount: {{ $REPEAT_SCALING_COUNT }}
+      sleepBetweenScalingTime: {{ $SLEEP_BETWEEN_SCALING_DURATION }}
       small:
         replicasMin: {{ MultiplyInt $SMALL_GROUP_SIZE 0.5 }}
         replicasMax: {{ MultiplyInt $SMALL_GROUP_SIZE 5 }}
