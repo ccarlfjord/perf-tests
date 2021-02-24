@@ -22,7 +22,7 @@ spec:
     spec:
       hostNetwork: false
       containers:
-{{if .EnableDNSTests}}
+{{if .enableDNSTests}}
       - image: k8s.gcr.io/kube-dns-perf-client-amd64:1.1
       # Fetches the dns server from /etc/resolv.conf and
       # runs as 5 clients and 2 threads sending 10 queries per second.
