@@ -2,22 +2,12 @@ apiVersion: v1
 kind: ConfigMap
 metadata:
   name: {{.Name}}
-{{if not (eq (Mod .Index 20) 0 19) }} # .Index % 20 in {0,19} - only 10% deployments will have non-immutable ConfigMap.
-immutable: true
-{{end}}
-# Every pod that needs its own configmap entry should be unconditionally
-# added below. That allows us to avoid complicating it with ifs.
 data:
   # all-queries is used by DNS tests.
   all-queries: |
-    kubernetes A
-    kubernetes AAAA
     kubernetes.cluster.local A
-    kubernetes.cluster.local AAAA
     kubernetes.svc.cluster.local A
-    kubernetes.svc.cluster.local AAAA
     kubernetes.default.svc.cluster.local A
-    kubernetes.default.svc.cluster.local AAAA
     google.com.svc.cluster.local A
     google.com.svc.cluster.local AAAA
     google.com.default.svc.cluster.local A
@@ -26,3 +16,12 @@ data:
     google.com.cluster.local AAAA
     google.com A
     google.com AAAA
+    small-service A
+    small-service.{{ .Namespace }} A
+    small-service.{{ .Namespace }}.svc.cluster.local A
+    medium-service A
+    medium-service.{{ .Namespace }} A
+    medium-service.{{ .Namespace }}.svc.cluster.local A
+    big-service A
+    big-service.{{ .Namespace }} A
+    big-service.{{ .Namespace }}.svc.cluster.local A

@@ -156,6 +156,10 @@ steps:
     objectBundle:
     - basename: small-service
       objectTemplatePath: service.yaml
+    - basename: medium-service
+      objectTemplatePath: service.yaml
+    - basename: big-service
+      objectTemplatePath: service.yaml
 
 - name: Creating PriorityClass for DaemonSets
   phases:
@@ -367,6 +371,10 @@ steps:
     tuningSet: Sequence
     objectBundle:
     - basename: small-service
+      objectTemplatePath: service.yaml
+    - basename: medium-service
+      objectTemplatePath: service.yaml
+    - basename: big-service
       objectTemplatePath: service.yaml
 
 - name: Collecting measurements

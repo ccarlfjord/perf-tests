@@ -12,7 +12,7 @@ delete_report_dir() {
   read -rp "./report/ exists, do you want to delete it (Y/n)? " delete_report
   echo
   if [[ ! $delete_report =~ ^[Yy]$|^$ ]]; then
-    rm -rf report/
+    rm -rf ./report/
   fi
 }
 
